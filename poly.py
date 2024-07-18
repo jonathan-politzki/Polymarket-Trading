@@ -41,24 +41,28 @@ def main():
 
     try:
         # Example of making a POST request with headers using requests library
-        endpoint = f"{host}/auth/derive-api-key"
-        response = requests.get(endpoint, headers=headers)
-        response.raise_for_status()  # Raise error for bad status codes
+        #endpoint = f"{host}/auth/derive-api-key"
+        #response = requests.get(endpoint, headers=headers)
+        #response.raise_for_status()  # Raise error for bad status codes
 
-        api_creds = client.derive_api_key()
-
-        print(f"API Key derived successfully: {api_creds}")
+        #api_creds = client.derive_api_key()
+        #print(f"API Key derived successfully: {api_creds}")
 
         # Store the API key, secret, and passphrase securely. Since the keys are derived these may be redundant
         api_key = os.getenv("API_KEY") # New line added for L2
         api_secret = os.getenv("API_SECRET")  # New line added for L2
         api_passphrase = os.getenv("API_PASSPHRASE")  # New line added for L2
 
+        if not api_key or not api_secret or not api_passphrase:
+            raise ValueError("API credentials not found in environment variables. Please check your .env file.")
+
+        api_creds = ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=api_passphrase)
+
         # Example of making an L2 authenticated request to retrieve API keys
         request_args = RequestArgs(  # New line added for L2
             method="GET",
             request_path="/auth/api-keys",
-            body=""
+            body="",
         )
         
         # Create Level 2 headers
@@ -72,6 +76,10 @@ def main():
         api_keys = response.json()  # New line added for L2
         print(f"Retrieved API keys: {api_keys}")  # New line added for L2
 
+        #potentially add some thing here for deleting
+        #delete_response = client.delete_api_key()
+        #print(f"API Key deleted: {delete_response}")
+
     except requests.exceptions.RequestException as e:
         print(f"Request Exception: {e}")
     except Exception as e:
@@ -79,3 +87,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# The code above demonstrates how to use the PolyMarket API client to interact with the PolyMarket API. It includes examples of creating Level 1 and Level 2 headers for authenticated requests, deriving API keys, and making authenticated requests to retrieve API keys. The code also demonstrates error handling and exception handling for requests.
+
