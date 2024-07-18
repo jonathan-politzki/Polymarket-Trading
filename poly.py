@@ -1,41 +1,53 @@
+from dotenv import load_dotenv, find_dotenv
+import os
+import time
 import requests
+from py_clob_client.client import ClobClient
+from py_clob_client.constants import AMOY
+from py_clob_client.exceptions import PolyApiException
 
-# Set the API endpoint URL
-url = "https://api.polymarket.com/v1/markets"
-
-# Set the query parameters
-params = {
-    "limit": 10,  # Adjust the limit as needed
-    "offset": 0   # Adjust the offset as needed
-}
-
-# Set the headers (replace 'YOUR_API_KEY' with your actual API key)
-headers = {
-    "Accept": "application/json",
-    "X-API-KEY": "YOUR_API_KEY"
-}
-
-# Make the API request
-response = requests.get(url, params=params, headers=headers)
-
-# Check if the request was successful
-if response.status_code == 200:
-    # Parse the JSON response
-    data = response.json()
-    
-    # Access the market data
-    markets = data["markets"]
-    
-    # Process the market data
-    for market in markets:
-        market_id = market["id"]
-        market_question = market["question"]
-        market_url = market["url"]
-        # ... access other market details as needed
-        
-        print(f"Market ID: {market_id}")
-        print(f"Question: {market_question}")
-        print(f"URL: {market_url}")
-        print("---")
+# Load .env file
+dotenv_path = find_dotenv()
+if not dotenv_path:
+    raise FileNotFoundError("No .env file found. Please ensure the .env file is in the correct directory.")
 else:
-    print(f"Error: {response.status_code}")
+    print(f"Loading environment variables from: {dotenv_path}")
+    load_dotenv(dotenv_path)
+
+def main():
+    host = "https://clob.polymarket.com"
+    key = os.getenv("PK")
+    
+    if not key:
+        raise ValueError("Private key not found in environment variables. Please check your .env file.")
+    
+    print(f"Loaded private key: {key[:5]}...")  # Print the first few characters for confirmation
+    
+    chain_id = AMOY
+    client = ClobClient(host, key=key, chain_id=chain_id)
+
+    # Prepare headers
+    poly_address = os.getenv("POLY_ADDRESS")
+    poly_signature = os.getenv("POLY_SIGNATURE")
+    poly_timestamp = str(int(time.time()))  # Current UNIX timestamp
+    poly_nonce = "0"  # Default nonce value
+
+    headers = {
+        "POLY_ADDRESS": poly_address,
+        "POLY_SIGNATURE": poly_signature,
+        "POLY_TIMESTAMP": poly_timestamp,
+        "POLY_NONCE": poly_nonce
+    }
+
+    try:
+        api_key = client.create_api_key(headers=headers)
+        print(f"API Key created successfully: {api_key}")
+    except PolyApiException as e:
+        print(f"Poly API Exception: {e}")
+        # Add more specific handling based on the exception details
+    except Exception as e:
+        print(f"Error: {e}")
+        # Handle other unexpected exceptions here
+
+if __name__ == "__main__":
+    main()
