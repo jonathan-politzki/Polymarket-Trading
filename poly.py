@@ -1,10 +1,14 @@
-from dotenv import load_dotenv, find_dotenv
 import os
 import time
-import requests
+from dotenv import load_dotenv, find_dotenv
 from py_clob_client.client import ClobClient
 from py_clob_client.constants import AMOY
-from py_clob_client.exceptions import PolyApiException
+from py_clob_client.clob_types import ApiCreds, RequestArgs
+from py_clob_client.signing.hmac import build_hmac_signature
+from py_clob_client.signer import Signer
+from py_clob_client.signing.eip712 import sign_clob_auth_message
+import requests
+from headers import create_level_1_headers
 
 # Load .env file
 dotenv_path = find_dotenv()
@@ -25,29 +29,27 @@ def main():
     
     chain_id = AMOY
     client = ClobClient(host, key=key, chain_id=chain_id)
-
+    
     # Prepare headers
-    poly_address = os.getenv("POLY_ADDRESS")
-    poly_signature = os.getenv("POLY_SIGNATURE")
-    poly_timestamp = str(int(time.time()))  # Current UNIX timestamp
-    poly_nonce = "0"  # Default nonce value
+    signing_address = os.getenv("POLY_ADDRESS")
+    nonce = "0"  # Default nonce value
 
-    headers = {
-        "POLY_ADDRESS": poly_address,
-        "POLY_SIGNATURE": poly_signature,
-        "POLY_TIMESTAMP": poly_timestamp,
-        "POLY_NONCE": poly_nonce
-    }
+    # Create Level 1 headers using the function from the library
+    signer = Signer(key, chain_id=chain_id)
+    headers = create_level_1_headers(signer, nonce=int(nonce))
 
     try:
-        api_key = client.create_api_key(headers=headers)
-        print(f"API Key created successfully: {api_key}")
-    except PolyApiException as e:
-        print(f"Poly API Exception: {e}")
-        # Add more specific handling based on the exception details
+        # Example of making a POST request with headers using requests library
+        endpoint = f"{host}/auth/api-key"
+        response = requests.post(endpoint, headers=headers)
+        response.raise_for_status()  # Raise error for bad status codes
+
+        api_creds = response.json()
+        print(f"API Key created successfully: {api_creds}")
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception: {e}")
     except Exception as e:
         print(f"Error: {e}")
-        # Handle other unexpected exceptions here
 
 if __name__ == "__main__":
     main()
