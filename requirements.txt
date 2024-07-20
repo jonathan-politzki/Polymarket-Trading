@@ -1,3 +1,4 @@
+logging
 matplotlib
 seaborn
 aiohttp==3.8.1
