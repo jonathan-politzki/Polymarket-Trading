@@ -7,7 +7,7 @@ from py_clob_client.signer import Signer
 from py_clob_client.constants import POLYGON
 import requests
 from headers import create_level_2_headers
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
 def process_market_data(market_data):
@@ -19,49 +19,27 @@ def process_market_data(market_data):
             "status": "Active" if market.get("active", False) else "Inactive",
             "end_date": datetime.fromisoformat(market.get("end_date_iso", "").replace("Z", "+00:00")).strftime("%Y-%m-%d %H:%M:%S") if market.get("end_date_iso") else "N/A",
             "description": market.get("description", "")[:100] + "..." if market.get("description", "") else "N/A",
-            "outcomes": ", ".join([f"{token.get('outcome', 'N/A')}: {token.get('price', 0)}" for token in market.get("tokens", []) if token.get("outcome")]),
             "tags": ", ".join(market.get("tags", [])) if isinstance(market.get("tags"), list) else ""
         }
+        
+        # Add token information
+        for i, token in enumerate(market.get("tokens", [])):
+            processed_market[f"token_{i+1}_id"] = token.get("token_id", "N/A")
+            processed_market[f"token_{i+1}_outcome"] = token.get("outcome", "N/A")
+        
         processed_markets.append(processed_market)
     return processed_markets
 
-def get_market_data():
-    # Load .env file
-    dotenv_path = find_dotenv()
-    if not dotenv_path:
-        raise FileNotFoundError("No .env file found. Please ensure the .env file is in the correct directory.")
-    load_dotenv(dotenv_path)
-
-    host = "https://clob.polymarket.com"
-    key = os.getenv("PK")
-    chain_id = POLYGON
-    
-    # Initialize client and signer
-    client = ClobClient(host, key=key, chain_id=chain_id)
-    signer = Signer(key, chain_id=chain_id)
-    
-    # Prepare API credentials
-    api_key = os.getenv("API_KEY")
-    api_secret = os.getenv("API_SECRET")
-    api_passphrase = os.getenv("API_PASSPHRASE")
-    
-    if not api_key or not api_secret or not api_passphrase:
-        raise ValueError("API credentials not found in environment variables. Please check your .env file.")
-    
-    api_creds = ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=api_passphrase)
-    
+def get_market_data(client, signer, api_creds, host):
     try:
-        # Prepare request arguments
         request_args = RequestArgs(
             method="GET",
             request_path="/markets",
             body="",
         )
         
-        # Create Level 2 headers for the markets request
         headers = create_level_2_headers(signer, api_creds, request_args)
         
-        # Make the API request to retrieve markets
         endpoint = f"{host}{request_args.request_path}"
         response = requests.get(endpoint, headers=headers)
         response.raise_for_status()
@@ -86,19 +64,94 @@ def get_market_data():
         traceback.print_exc()
         return None
 
+def get_timeseries_data(client, signer, api_creds, host, token_id):
+    try:
+        end_ts = int(time.time())
+        start_ts = end_ts - (30 * 24 * 60 * 60)  # 30 days ago
+        
+        request_args = RequestArgs(
+            method="GET",
+            request_path=f"/prices-history?market={token_id}&startTs={start_ts}&endTs={end_ts}&fidelity=60",
+            body="",
+        )
+        
+        headers = create_level_2_headers(signer, api_creds, request_args)
+        
+        endpoint = f"{host}{request_args.request_path}"
+        response = requests.get(endpoint, headers=headers)
+        response.raise_for_status()
+        
+        response_data = response.json()
+        
+        if 'history' in response_data:
+            return response_data['history']
+        else:
+            print(f"No 'history' key found in the API response for token {token_id}.")
+            return None
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Request Exception for token {token_id}: {e}")
+        return None
+    except Exception as e:
+        print(f"Error for token {token_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def main():
-    processed_markets = get_market_data()
+    dotenv_path = find_dotenv()
+    if not dotenv_path:
+        raise FileNotFoundError("No .env file found. Please ensure the .env file is in the correct directory.")
+    load_dotenv(dotenv_path)
+
+    host = "https://clob.polymarket.com"
+    key = os.getenv("PK")
+    chain_id = POLYGON
+    
+    client = ClobClient(host, key=key, chain_id=chain_id)
+    signer = Signer(key, chain_id=chain_id)
+    
+    api_key = os.getenv("API_KEY")
+    api_secret = os.getenv("API_SECRET")
+    api_passphrase = os.getenv("API_PASSPHRASE")
+    
+    if not api_key or not api_secret or not api_passphrase:
+        raise ValueError("API credentials not found in environment variables. Please check your .env file.")
+    
+    api_creds = ApiCreds(api_key=api_key, api_secret=api_secret, api_passphrase=api_passphrase)
+    
+    processed_markets = get_market_data(client, signer, api_creds, host)
     
     if processed_markets:
         df = pd.DataFrame(processed_markets)
         
-        # Create directory if it doesn't exist
         os.makedirs('poly_data', exist_ok=True)
         
-        # Save to CSV
         csv_path = os.path.join('poly_data', 'market_data.csv')
         df.to_csv(csv_path, index=False)
         print(f"Market data saved to {csv_path}")
+        
+        # Collect timeseries data
+        timeseries_data = []
+        for _, row in df.iterrows():
+            for i in range(1, 3):  # Assuming there are always 2 tokens
+                token_id = row[f'token_{i}_id']
+                token_outcome = row[f'token_{i}_outcome']
+                history = get_timeseries_data(client, signer, api_creds, host, token_id)
+                if history:
+                    for point in history:
+                        timeseries_data.append({
+                            'token_id': token_id,
+                            'token_outcome': token_outcome,
+                            'market_slug': row['market_slug'],
+                            'timestamp': datetime.fromtimestamp(point['t']).strftime('%Y-%m-%d %H:%M:%S'),
+                            'price': point['p']
+                        })
+        
+        timeseries_df = pd.DataFrame(timeseries_data)
+        timeseries_csv_path = os.path.join('poly_data', 'time_series_data.csv')
+        timeseries_df.to_csv(timeseries_csv_path, index=False)
+        print(f"Time series data saved to {timeseries_csv_path}")
     else:
         print("Failed to retrieve market data.")
 
