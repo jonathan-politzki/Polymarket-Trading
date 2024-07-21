@@ -34,7 +34,7 @@ def add_features(df):
     return df
 
 # Load the linked dataset
-linked_data = pd.read_csv('poly_data/linked_market_timeseries_data.csv')
+linked_data = pd.read_csv('poly_data/extended_time_series_data.csv')
 
 # Add features
 enhanced_data = add_features(linked_data)
