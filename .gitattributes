@@ -3,3 +3,4 @@
 poly_data/extended_time_series_data.csv filter=lfs diff=lfs merge=lfs -text
 poly_data/extended_time_market_data.csv filter=lfs diff=lfs merge=lfs -text
 poly_data/extended_market_data.csv filter=lfs diff=lfs merge=lfs -text
+poly_data/extended_time_series_data_part_* filter=lfs diff=lfs merge=lfs -text
